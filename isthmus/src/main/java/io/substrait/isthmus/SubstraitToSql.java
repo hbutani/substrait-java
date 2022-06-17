@@ -1,5 +1,6 @@
 package io.substrait.isthmus;
 
+import io.substrait.function.SimpleExtension;
 import io.substrait.relation.Rel;
 import io.substrait.type.NamedStruct;
 import java.util.Arrays;
@@ -23,11 +24,18 @@ public class SubstraitToSql extends SqlConverterBase {
   protected final CalciteCatalogReader catalogReader;
   protected final SqlValidator validator;
 
+  protected final SimpleExtension.ExtensionCollection extensions;
+
   public SubstraitToSql() {
+    this(EXTENSION_COLLECTION);
+  }
+
+  public SubstraitToSql(SimpleExtension.ExtensionCollection extensions) {
     CalciteSchema rootSchema = CalciteSchema.createRootSchema(false);
     this.catalogReader = new CalciteCatalogReader(rootSchema, Arrays.asList(), factory, config);
     this.validator =
-        SqlToSubstrait.Validator.create(factory, catalogReader, SqlValidator.Config.DEFAULT);
+            SqlToSubstrait.Validator.create(factory, catalogReader, SqlValidator.Config.DEFAULT);
+    this.extensions = extensions;
   }
 
   public RelNode substraitRelToCalciteRel(Rel relRoot, List<String> tables)
@@ -41,7 +49,7 @@ public class SubstraitToSql extends SqlConverterBase {
       }
     }
 
-    return SubstraitRelNodeConverter.convert(relRoot, relOptCluster, catalogReader, parserConfig);
+    return SubstraitRelNodeConverter.convert(extensions, relRoot, relOptCluster, catalogReader, parserConfig);
   }
 
   public RelNode substraitRelToCalciteRel(

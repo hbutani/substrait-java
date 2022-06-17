@@ -128,6 +128,12 @@ public class Substrait2SqlTest extends PlanTestBase {
             + "  l_linestatus\n");
   }
 
+  @Test
+  public void round() throws Exception {
+    test("select l_partkey, round(l_extendedprice, 1) from lineitem");
+    test("select l_partkey, round(l_extendedprice) from lineitem");
+  }
+
   private void test(String query) throws Exception {
     String[] values = asString("tpch/schema.sql").split(";");
     var creates = Arrays.stream(values).filter(t -> !t.trim().isBlank()).toList();
@@ -135,15 +141,15 @@ public class Substrait2SqlTest extends PlanTestBase {
     // 1. sql -> substrait rel
     SqlToSubstrait s = new SqlToSubstrait();
     for (RelRoot relRoot : s.sqlToRelNode(query, creates)) {
-      Rel pojoRel = SubstraitRelVisitor.convert(relRoot, EXTENSION_COLLECTION);
+      Rel pojoRel = SubstraitRelVisitor.convert(relRoot, TEST_EXTENSION_COLLECTION);
 
       // 2. substrait rel -> Calcite Rel
-      RelNode relnodeRoot = new SubstraitToSql().substraitRelToCalciteRel(pojoRel, creates);
+      RelNode relnodeRoot = new SubstraitToSql(TEST_EXTENSION_COLLECTION).substraitRelToCalciteRel(pojoRel, creates);
 
       // 3. Calcite Rel -> substrait rel
       Rel pojoRel2 =
           SubstraitRelVisitor.convert(
-              RelRoot.of(relnodeRoot, SqlKind.SELECT), EXTENSION_COLLECTION);
+              RelRoot.of(relnodeRoot, SqlKind.SELECT), TEST_EXTENSION_COLLECTION);
 
       Assertions.assertEquals(pojoRel, pojoRel2);
       // 4. Calcite Rel -> sql

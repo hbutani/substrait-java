@@ -87,9 +87,18 @@ public class SubstraitRelNodeConverter extends AbstractRelVisitor<RelNode, Runti
       RelOptCluster relOptCluster,
       CalciteCatalogReader calciteCatalogReader,
       SqlParser.Config parserConfig) {
+    return convert(EXTENSION_COLLECTION, relRoot, relOptCluster, calciteCatalogReader, parserConfig);
+  }
+
+  public static RelNode convert(
+          SimpleExtension.ExtensionCollection extensions,
+          Rel relRoot,
+          RelOptCluster relOptCluster,
+          CalciteCatalogReader calciteCatalogReader,
+          SqlParser.Config parserConfig) {
     return relRoot.accept(
-        new SubstraitRelNodeConverter(
-            EXTENSION_COLLECTION, relOptCluster, calciteCatalogReader, parserConfig));
+            new SubstraitRelNodeConverter(
+                    extensions, relOptCluster, calciteCatalogReader, parserConfig));
   }
 
   @Override

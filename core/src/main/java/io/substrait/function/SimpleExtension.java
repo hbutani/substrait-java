@@ -483,7 +483,7 @@ public class SimpleExtension {
     return complete;
   }
 
-  private static ExtensionCollection load(String namespace, InputStream stream) {
+  public static ExtensionCollection load(String namespace, InputStream stream) {
     try {
       var doc = MAPPER.readValue(stream, SimpleExtension.FunctionSignatures.class);
       var collection =
