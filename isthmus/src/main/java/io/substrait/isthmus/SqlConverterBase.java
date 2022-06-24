@@ -23,6 +23,7 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.schema.Schema;
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.schema.impl.AbstractTable;
 import org.apache.calcite.sql.SqlNode;
@@ -36,6 +37,7 @@ import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.parser.ddl.SqlDdlParserImpl;
+import org.apache.calcite.sql.validate.SqlConformance;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorCatalogReader;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
@@ -63,7 +65,10 @@ class SqlConverterBase {
               new ProxyingMetadataHandlerProvider(DefaultRelMetadataProvider.INSTANCE);
           return new RelMetadataQuery(handler);
         });
-    parserConfig = SqlParser.Config.DEFAULT.withParserFactory(SqlDdlParserImpl.FACTORY);
+    parserConfig =
+        SqlParser.Config.DEFAULT
+            .withParserFactory(SqlDdlParserImpl.FACTORY)
+            .withConformance(SqlConformance.PRAGMATIC_2003);
   }
 
   protected static final SimpleExtension.ExtensionCollection EXTENSION_COLLECTION;
@@ -94,6 +99,19 @@ class SqlConverterBase {
         }
       }
     }
+    return Pair.of(validator, catalogReader);
+  }
+
+  Pair<SqlValidator, CalciteCatalogReader> registerSchema(String name, Schema schema) {
+    CalciteSchema rootSchema = CalciteSchema.createRootSchema(false);
+    if (schema != null) {
+      rootSchema.add(name, schema);
+      rootSchema = rootSchema.getSubSchema(name, false);
+    }
+    CalciteCatalogReader catalogReader =
+        new CalciteCatalogReader(rootSchema, List.of(), factory, config);
+    SqlValidator validator = Validator.create(factory, catalogReader, SqlValidator.Config.DEFAULT);
+
     return Pair.of(validator, catalogReader);
   }
 
