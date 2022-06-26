@@ -1,6 +1,8 @@
 package io.substrait.isthmus;
 
 import com.google.protobuf.util.JsonFormat;
+
+import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +32,41 @@ public class TpcdsQueryNoValidation extends PlanTestBase {
     System.out.println(JsonFormat.printer().print(plan));
   }
 
+  /*
+   * Missing Functions
+   * - Substring      -> {2, 15, 19, 23}
+   * - Round          -> {8}
+   * - ||             -> {5}
+   * - STDDEV_SAMP    -> {17}
+   * - UPPER          -> {24}
+   * Missing features
+   * - Unsupported subquery nested in Project    -> {9}
+   * - Exception while converting
+   *   SUM(`WS_EXT_SALES_PRICE`) * 100 / (SUM(SUM(`WS_EXT_SALES_PRICE`)) OVER (PARTITION B...  -> {12}
+   * - Unable to find binding for call GROUPING($1)    -> {27}
+   */
+
+  /*
+   * Fixes:
+   * - use spark sql tpcds queries as reference to fix parse and generation errors
+   *   - these are tpcds queries used in sparklinedata and spark_on_oracle projects
+   *     - queries current as of mid 2021.
+   *
+   * - Parse
+   *    - returns is keyword in Calcite SQL so change to rets
+   *      - {5}
+   *    - replace x days with interval 'x' day
+   *      - {5, 16, 20, 21}
+   *    - just exported define block, o replace with spark sql query
+   *      - {12}
+   * - Generator
+   *   - doesn't handle pick from a date range, for example `date([YEAR]+"-08-01",[YEAR]+"-08-30",sales);`
+   *     - {5, 20}
+   *    - doesn't handle generation of ulist for example RC=ulist(random(1, rowcount("store_sales")/5,uniform),5);
+   *      - picked constants from spark sql tpcds query set
+   *      - {9, 18, 20}
+   */
+
   @Test
   public void tpcdsAll() throws Exception {
     SqlToSubstrait s = new SqlToSubstrait();
@@ -43,7 +80,7 @@ public class TpcdsQueryNoValidation extends PlanTestBase {
 
       final Query query = Query.of(i);
       // String sql = query.sql(new Random(0));
-      String sql = FixedQuery.fixedQuerySQL(query, new Random(0));
+      String sql = asString(String.format("tpcds/queries/%02d.sql", i));
 
       try {
         var plan = s.execute(sql, "tpcds", schema);
@@ -57,17 +94,17 @@ public class TpcdsQueryNoValidation extends PlanTestBase {
 
     System.out.printf("Succeeded Queries:\n%s\n", succeeded_queries);
     System.out.printf(
-        "Failed Queries:\n%s\n",
-        failed_queries.stream().map(r -> r.left).collect(Collectors.toList()));
+            "Failed Queries:\n%s\n",
+            failed_queries.stream().map(r -> r.left).collect(Collectors.toList()));
 
     System.out.println("-------------------------");
     System.out.println("Failed Queries Exceptions:");
     for (var failed_query : failed_queries) {
 
       var exceptionMsg =
-          failed_query.right.right.length() > 100
-              ? failed_query.right.right.substring(0, 100) + "...."
-              : failed_query.right.right;
+              failed_query.right.right.length() > 100
+                      ? failed_query.right.right.substring(0, 100) + "...."
+                      : failed_query.right.right;
 
       System.out.printf("Failed for Query %d: Exception %s\n", failed_query.left, exceptionMsg);
     }
@@ -76,11 +113,40 @@ public class TpcdsQueryNoValidation extends PlanTestBase {
     System.out.println("Failed Queries SQLs:");
     for (var failed_query : failed_queries) {
       System.out.printf(
-          "Failed for Query %d sql:\n%s\n", failed_query.left, failed_query.right.left);
+              "Failed for Query %d sql:\n%s\n", failed_query.left, failed_query.right.left);
+    }
+  }
+
+
+  @Test
+  public void tpcdsWriteAll() throws Exception {
+    SqlToSubstrait s = new SqlToSubstrait();
+    TpcdsSchema schema = new TpcdsSchema(1.0);
+    // s.registerSchema("tpcds", schema);
+
+    for (int i = 1; i < 100; i++) {
+
+      final Query query = Query.of(i);
+      // String sql = query.sql(new Random(0));
+      String sql = FixedQuery.fixedQuerySQL(query, new Random(0));
+
+      try(var writer = new FileWriter(String.format("./src/test/resources/tpcds/queries/%02d.sql", i))) {
+          writer.append(sql);
+          writer.flush();
+      }
     }
   }
 
   private void testQuery(int i) throws Exception {
+    SqlToSubstrait s = new SqlToSubstrait();
+    TpcdsSchema schema = new TpcdsSchema(1.0);
+    final Query query = Query.of(i);
+    String sql = asString(String.format("tpcds/queries/%02d.sql", i));
+    var plan = s.execute(sql, "tpcds", schema);
+    // System.out.println(JsonFormat.printer().print(plan));
+  }
+
+  private void testQueryGen(int i) throws Exception {
     SqlToSubstrait s = new SqlToSubstrait();
     TpcdsSchema schema = new TpcdsSchema(1.0);
     final Query query = Query.of(i);
@@ -177,5 +243,29 @@ public class TpcdsQueryNoValidation extends PlanTestBase {
       })
   public void tpcdsErrorsToClassify(int i) throws Exception {
     testQuery(i);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+          ints = {44})
+  public void tpcdsErrorsDay(int i) throws Exception {
+    testQuery(i);
+  }
+
+  @Test
+  public void experiment() throws Exception {
+    SqlToSubstrait s = new SqlToSubstrait();
+    TpcdsSchema schema = new TpcdsSchema(1.0);
+
+    String sql = "";
+
+    // substr -> substring
+    sql = "select substring(ca_zip,1,5) ca_zip  FROM customer_address";
+
+    // days
+    sql = "select * from date_dim where d_date between cast('1998-08-01' as date)\n" +
+            "                  and (cast('1998-08-01' as date) +  interval '14' day)";
+
+    var plan = s.execute(sql, "tpcds", schema);
   }
 }
